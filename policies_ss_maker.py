@@ -9,52 +9,39 @@ from urllib.parse import urlparse
 
 import pandas as pd
 from PIL import Image
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
+
 import streamlit as st
 
-
-# ================= CONFIG =================
-CHROME_PROFILE_PATH = r"C:\Users\Acer\AppData\Local\Google\Chrome\User Data"
-CHROME_PROFILE_NAME = "Profile 26"
-# ==========================================
-
-
-def get_downloads_folder():
-    return os.path.join(os.path.expanduser("~"), "Downloads")
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 
 
-def setup_driver(profile_src_path=None):
+# ================= DRIVER SETUP =================
 
-    temp_profile = None
+def setup_driver():
+
     chrome_options = Options()
 
-    if profile_src_path and os.path.exists(profile_src_path):
-
-        try:
-            temp_profile = tempfile.mkdtemp(prefix="chrome_profile_")
-            shutil.copytree(profile_src_path, temp_profile, dirs_exist_ok=True)
-            chrome_options.add_argument(f"--user-data-dir={temp_profile}")
-
-        except Exception as e:
-            print(f"Warning: Failed to copy profile: {e}")
-            temp_profile = None
-
-    chrome_options.add_argument("--start-maximized")
     chrome_options.add_argument("--headless=new")
-    chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_experimental_option("excludeSwitches", ["enable-logging"])
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--window-size=1920,1080")
+    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
 
-    driver = webdriver.Chrome(options=chrome_options)
+    service = Service(ChromeDriverManager().install())
+
+    driver = webdriver.Chrome(service=service, options=chrome_options)
 
     driver.implicitly_wait(5)
 
-    return driver, temp_profile
+    return driver
 
 
-# ===== Remove Sticky Headers =====
+# ================= UTILITIES =================
+
 def remove_sticky_elements(driver):
 
     driver.execute_script("""
@@ -74,7 +61,6 @@ def capture_fullpage_screenshot(driver, url, folder):
 
     time.sleep(3)
 
-    # remove sticky headers
     remove_sticky_elements(driver)
 
     time.sleep(1)
@@ -86,6 +72,7 @@ def capture_fullpage_screenshot(driver, url, folder):
     viewport_height = driver.execute_script("return window.innerHeight")
 
     images = []
+
     scroll_position = 0
 
     while scroll_position < total_height:
@@ -115,9 +102,7 @@ def capture_fullpage_screenshot(driver, url, folder):
     y_offset = 0
 
     for img in images:
-
         stitched_image.paste(img, (0, y_offset))
-
         y_offset += img.height
 
     parsed = urlparse(url)
@@ -164,6 +149,8 @@ def zip_folder(folder_path):
     return zip_buffer
 
 
+# ================= STREAMLIT APP =================
+
 def main():
 
     st.set_page_config(page_title="Policies Screenshot Maker", layout="wide")
@@ -171,8 +158,6 @@ def main():
     st.title("Policies Screenshot Maker")
 
     st.write("Capture full-page screenshots and download them as ZIP.")
-
-    # ===== URL INPUT =====
 
     st.subheader("Provide URLs")
 
@@ -187,7 +172,6 @@ def main():
 
     urls = []
 
-    # ===== Manual =====
     if input_mode == "Manual Input (16 URLs)":
 
         cols = st.columns(2)
@@ -205,7 +189,6 @@ def main():
 
                 urls.append(url.strip())
 
-    # ===== Paste =====
     elif input_mode == "Paste Multiple URLs":
 
         bulk_urls = st.text_area("Paste URLs (one per line)", height=250)
@@ -223,7 +206,6 @@ def main():
 
                     urls.append(url)
 
-    # ===== Excel Upload =====
     elif input_mode == "Upload Excel / CSV File":
 
         uploaded_file = st.file_uploader(
@@ -259,14 +241,11 @@ def main():
 
                 st.error(f"Error reading file: {e}")
 
-    # ===== Screenshot Start =====
-
     if st.button("Start Capture"):
 
         if not urls:
 
             st.warning("Please provide at least one URL")
-
             return
 
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -275,17 +254,9 @@ def main():
 
         os.makedirs(output_folder, exist_ok=True)
 
-        driver = None
-        temp_profile = None
-
         try:
 
-            profile_src = os.path.join(
-                CHROME_PROFILE_PATH,
-                CHROME_PROFILE_NAME
-            )
-
-            driver, temp_profile = setup_driver(profile_src)
+            driver = setup_driver()
 
             st.success("Chrome launched")
 
@@ -318,35 +289,6 @@ def main():
         except Exception as e:
 
             st.error(f"Fatal error: {e}")
-
-            if driver:
-                driver.quit()
-
-        finally:
-
-            if temp_profile and os.path.exists(temp_profile):
-                shutil.rmtree(temp_profile, ignore_errors=True)
-
-        # Save to Downloads
-
-        try:
-
-            downloads_folder = get_downloads_folder()
-
-            target_folder = os.path.join(
-                downloads_folder,
-                os.path.basename(output_folder)
-            )
-
-            shutil.copytree(output_folder, target_folder, dirs_exist_ok=True)
-
-            st.info(f"Saved to Downloads: {target_folder}")
-
-        except Exception as e:
-
-            st.warning(f"Could not save to Downloads: {e}")
-
-        # ZIP Download
 
         zip_buffer = zip_folder(output_folder)
 
