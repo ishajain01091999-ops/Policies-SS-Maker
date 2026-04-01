@@ -141,7 +141,7 @@ def main():
 
     # ===== Manual Input =====
 
-    if input_mode == "Manual Input (16 URLs)"):
+    if input_mode == "Manual Input (16 URLs)":
 
         cols = st.columns(2)
 
