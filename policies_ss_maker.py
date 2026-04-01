@@ -1,7 +1,6 @@
 import os
 import time
 import tempfile
-import shutil
 import zipfile
 from io import BytesIO
 from datetime import datetime
@@ -9,13 +8,11 @@ from urllib.parse import urlparse
 
 import pandas as pd
 from PIL import Image
-
 import streamlit as st
 
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 
 
 # ================= DRIVER SETUP =================
@@ -29,9 +26,10 @@ def setup_driver():
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--window-size=1920,1080")
-    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
 
-    service = Service(ChromeDriverManager().install())
+    chrome_options.binary_location = "/usr/bin/chromium"
+
+    service = Service("/usr/bin/chromedriver")
 
     driver = webdriver.Chrome(service=service, options=chrome_options)
 
@@ -40,7 +38,7 @@ def setup_driver():
     return driver
 
 
-# ================= UTILITIES =================
+# ===== Remove Sticky Headers =====
 
 def remove_sticky_elements(driver):
 
@@ -54,6 +52,8 @@ def remove_sticky_elements(driver):
     }
     """)
 
+
+# ===== Screenshot Logic =====
 
 def capture_fullpage_screenshot(driver, url, folder):
 
@@ -72,14 +72,13 @@ def capture_fullpage_screenshot(driver, url, folder):
     viewport_height = driver.execute_script("return window.innerHeight")
 
     images = []
-
     scroll_position = 0
 
     while scroll_position < total_height:
 
         driver.execute_script(f"window.scrollTo(0,{scroll_position})")
 
-        time.sleep(0.6)
+        time.sleep(0.7)
 
         png = driver.get_screenshot_as_png()
 
@@ -112,21 +111,18 @@ def capture_fullpage_screenshot(driver, url, folder):
     path_part = parsed.path.strip("/").replace("/", "_") or "homepage"
 
     filename = "".join(
-        c if c.isalnum() or c in "_-." else "_" for c in f"{safe_name}_{path_part}.png"
+        c if c.isalnum() or c in "_-." else "_"
+        for c in f"{safe_name}_{path_part}.png"
     )
 
     file_path = os.path.join(folder, filename)
 
     stitched_image.save(file_path)
 
-    for img in images:
-        try:
-            os.remove(img.filename)
-        except:
-            pass
-
     return file_path
 
+
+# ===== ZIP Function =====
 
 def zip_folder(folder_path):
 
@@ -172,6 +168,8 @@ def main():
 
     urls = []
 
+    # ===== Manual Input =====
+
     if input_mode == "Manual Input (16 URLs)":
 
         cols = st.columns(2)
@@ -185,9 +183,11 @@ def main():
             if url.strip():
 
                 if not url.startswith(("http://", "https://")):
-                    url = "https://" + url.strip()
+                    url = "https://" + url
 
                 urls.append(url.strip())
+
+    # ===== Paste URLs =====
 
     elif input_mode == "Paste Multiple URLs":
 
@@ -205,6 +205,8 @@ def main():
                         url = "https://" + url
 
                     urls.append(url)
+
+    # ===== Upload File =====
 
     elif input_mode == "Upload Excel / CSV File":
 
@@ -241,6 +243,8 @@ def main():
 
                 st.error(f"Error reading file: {e}")
 
+    # ===== Start Capture =====
+
     if st.button("Start Capture"):
 
         if not urls:
@@ -250,15 +254,13 @@ def main():
 
         timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
-        output_folder = f"Policies_Screenshots_{timestamp}"
+        output_folder = f"Screenshots_{timestamp}"
 
         os.makedirs(output_folder, exist_ok=True)
 
         try:
 
             driver = setup_driver()
-
-            st.success("Chrome launched")
 
             progress = st.progress(0.0)
 
