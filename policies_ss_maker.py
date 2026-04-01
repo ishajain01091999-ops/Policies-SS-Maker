@@ -1,12 +1,12 @@
 import os
 import time
 import zipfile
+import base64
 from io import BytesIO
 from datetime import datetime
 from urllib.parse import urlparse
 
 import pandas as pd
-from PIL import Image
 import streamlit as st
 
 from selenium import webdriver
@@ -24,15 +24,12 @@ def setup_driver():
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--window-size=1920,1080")
 
     chrome_options.binary_location = "/usr/bin/chromium"
 
     service = Service("/usr/bin/chromedriver")
 
     driver = webdriver.Chrome(service=service, options=chrome_options)
-
-    driver.implicitly_wait(5)
 
     return driver
 
@@ -46,13 +43,13 @@ def remove_sticky_elements(driver):
     for (var i = 0; i < elements.length; i++) {
         var style = window.getComputedStyle(elements[i]);
         if (style.position === 'fixed' || style.position === 'sticky') {
-            elements[i].style.position = 'absolute';
+            elements[i].style.display = 'none';
         }
     }
     """)
 
 
-# ===== Screenshot Function (No Duplicate Sections) =====
+# ===== Full Page Screenshot (No Scroll / No Duplicate) =====
 
 def capture_fullpage_screenshot(driver, url, folder):
 
@@ -64,50 +61,15 @@ def capture_fullpage_screenshot(driver, url, folder):
 
     time.sleep(1)
 
-    total_height = driver.execute_script(
-        "return document.body.scrollHeight"
+    result = driver.execute_cdp_cmd(
+        "Page.captureScreenshot",
+        {
+            "captureBeyondViewport": True,
+            "fromSurface": True
+        },
     )
 
-    viewport_height = driver.execute_script(
-        "return window.innerHeight"
-    )
-
-    images = []
-
-    scroll_position = 0
-
-    while scroll_position < total_height:
-
-        driver.execute_script(f"window.scrollTo(0,{scroll_position})")
-
-        time.sleep(0.7)
-
-        png = driver.get_screenshot_as_png()
-
-        img = Image.open(BytesIO(png))
-
-        images.append(img)
-
-        scroll_position += viewport_height
-
-    total_width = images[0].width
-
-    stitched_image = Image.new("RGB", (total_width, total_height))
-
-    y_offset = 0
-
-    for img in images:
-
-        crop_height = min(img.height, total_height - y_offset)
-
-        cropped = img.crop((0, 0, total_width, crop_height))
-
-        stitched_image.paste(cropped, (0, y_offset))
-
-        y_offset += crop_height
-
-        if y_offset >= total_height:
-            break
+    image_data = base64.b64decode(result["data"])
 
     parsed = urlparse(url)
 
@@ -119,7 +81,8 @@ def capture_fullpage_screenshot(driver, url, folder):
 
     file_path = os.path.join(folder, filename)
 
-    stitched_image.save(file_path)
+    with open(file_path, "wb") as f:
+        f.write(image_data)
 
     return file_path
 
@@ -170,8 +133,6 @@ def main():
 
     urls = []
 
-    # ===== Manual Input =====
-
     if input_mode == "Manual Input (16 URLs)":
 
         cols = st.columns(2)
@@ -189,8 +150,6 @@ def main():
 
                 urls.append(url.strip())
 
-    # ===== Paste URLs =====
-
     elif input_mode == "Paste Multiple URLs":
 
         bulk_urls = st.text_area("Paste URLs (one per line)", height=250)
@@ -207,8 +166,6 @@ def main():
                         url = "https://" + url
 
                     urls.append(url)
-
-    # ===== Upload File =====
 
     elif input_mode == "Upload Excel / CSV File":
 
@@ -244,8 +201,6 @@ def main():
             except Exception as e:
 
                 st.error(f"Error reading file: {e}")
-
-    # ===== Start Capture =====
 
     if st.button("Start Capture"):
 
