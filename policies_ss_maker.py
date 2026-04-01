@@ -9,27 +9,27 @@ from urllib.parse import urlparse
 import pandas as pd
 import streamlit as st
 
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
+import undetected_chromedriver as uc
 
 
 # ================= DRIVER SETUP =================
 
 def setup_driver():
 
-    chrome_options = Options()
+    options = uc.ChromeOptions()
 
-    chrome_options.add_argument("--headless=new")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--disable-gpu")
+    options.add_argument("--headless=new")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
 
-    chrome_options.binary_location = "/usr/bin/chromium"
+    options.add_argument(
+        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    )
 
-    service = Service("/usr/bin/chromedriver")
-
-    driver = webdriver.Chrome(service=service, options=chrome_options)
+    driver = uc.Chrome(options=options)
 
     return driver
 
@@ -49,13 +49,13 @@ def remove_sticky_elements(driver):
     """)
 
 
-# ===== Full Page Screenshot (No Scroll / No Duplicate) =====
+# ===== Full Page Screenshot =====
 
 def capture_fullpage_screenshot(driver, url, folder):
 
     driver.get(url)
 
-    time.sleep(3)
+    time.sleep(5)
 
     remove_sticky_elements(driver)
 
@@ -66,7 +66,7 @@ def capture_fullpage_screenshot(driver, url, folder):
         {
             "captureBeyondViewport": True,
             "fromSurface": True
-        },
+        }
     )
 
     image_data = base64.b64decode(result["data"])
@@ -133,6 +133,8 @@ def main():
 
     urls = []
 
+    # ===== Manual Input =====
+
     if input_mode == "Manual Input (16 URLs)":
 
         cols = st.columns(2)
@@ -150,6 +152,8 @@ def main():
 
                 urls.append(url.strip())
 
+    # ===== Paste URLs =====
+
     elif input_mode == "Paste Multiple URLs":
 
         bulk_urls = st.text_area("Paste URLs (one per line)", height=250)
@@ -166,6 +170,8 @@ def main():
                         url = "https://" + url
 
                     urls.append(url)
+
+    # ===== Upload File =====
 
     elif input_mode == "Upload Excel / CSV File":
 
@@ -201,6 +207,8 @@ def main():
             except Exception as e:
 
                 st.error(f"Error reading file: {e}")
+
+    # ===== Start Capture =====
 
     if st.button("Start Capture"):
 
