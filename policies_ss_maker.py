@@ -9,27 +9,33 @@ from urllib.parse import urlparse
 import pandas as pd
 import streamlit as st
 
-import undetected_chromedriver as uc
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 
 
 # ================= DRIVER SETUP =================
 
 def setup_driver():
 
-    options = uc.ChromeOptions()
+    chrome_options = Options()
 
-    options.add_argument("--headless=new")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--headless=new")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--disable-gpu")
 
-    options.add_argument(
+    chrome_options.add_argument(
         "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
         "Chrome/120.0.0.0 Safari/537.36"
     )
 
-    driver = uc.Chrome(options=options)
+    chrome_options.binary_location = "/usr/bin/chromium"
+
+    service = Service("/usr/bin/chromedriver")
+
+    driver = webdriver.Chrome(service=service, options=chrome_options)
 
     return driver
 
@@ -49,13 +55,13 @@ def remove_sticky_elements(driver):
     """)
 
 
-# ===== Full Page Screenshot =====
+# ===== Full Page Screenshot (DevTools) =====
 
 def capture_fullpage_screenshot(driver, url, folder):
 
     driver.get(url)
 
-    time.sleep(5)
+    time.sleep(4)
 
     remove_sticky_elements(driver)
 
@@ -66,7 +72,7 @@ def capture_fullpage_screenshot(driver, url, folder):
         {
             "captureBeyondViewport": True,
             "fromSurface": True
-        }
+        },
     )
 
     image_data = base64.b64decode(result["data"])
@@ -135,7 +141,7 @@ def main():
 
     # ===== Manual Input =====
 
-    if input_mode == "Manual Input (16 URLs)":
+    if input_mode == "Manual Input (16 URLs)"):
 
         cols = st.columns(2)
 
