@@ -1,6 +1,5 @@
 import os
 import time
-import tempfile
 import zipfile
 from io import BytesIO
 from datetime import datetime
@@ -53,7 +52,7 @@ def remove_sticky_elements(driver):
     """)
 
 
-# ===== Screenshot Logic =====
+# ===== Screenshot Function (No Duplicate Sections) =====
 
 def capture_fullpage_screenshot(driver, url, folder):
 
@@ -66,12 +65,15 @@ def capture_fullpage_screenshot(driver, url, folder):
     time.sleep(1)
 
     total_height = driver.execute_script(
-        "return Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);"
+        "return document.body.scrollHeight"
     )
 
-    viewport_height = driver.execute_script("return window.innerHeight")
+    viewport_height = driver.execute_script(
+        "return window.innerHeight"
+    )
 
     images = []
+
     scroll_position = 0
 
     while scroll_position < total_height:
@@ -82,27 +84,30 @@ def capture_fullpage_screenshot(driver, url, folder):
 
         png = driver.get_screenshot_as_png()
 
-        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-
-        with open(temp_file.name, "wb") as f:
-            f.write(png)
-
-        img = Image.open(temp_file.name)
+        img = Image.open(BytesIO(png))
 
         images.append(img)
 
         scroll_position += viewport_height
 
-    total_width = max(img.width for img in images)
-    combined_height = sum(img.height for img in images)
+    total_width = images[0].width
 
-    stitched_image = Image.new("RGB", (total_width, combined_height))
+    stitched_image = Image.new("RGB", (total_width, total_height))
 
     y_offset = 0
 
     for img in images:
-        stitched_image.paste(img, (0, y_offset))
-        y_offset += img.height
+
+        crop_height = min(img.height, total_height - y_offset)
+
+        cropped = img.crop((0, 0, total_width, crop_height))
+
+        stitched_image.paste(cropped, (0, y_offset))
+
+        y_offset += crop_height
+
+        if y_offset >= total_height:
+            break
 
     parsed = urlparse(url)
 
@@ -110,10 +115,7 @@ def capture_fullpage_screenshot(driver, url, folder):
 
     path_part = parsed.path.strip("/").replace("/", "_") or "homepage"
 
-    filename = "".join(
-        c if c.isalnum() or c in "_-." else "_"
-        for c in f"{safe_name}_{path_part}.png"
-    )
+    filename = f"{safe_name}_{path_part}.png"
 
     file_path = os.path.join(folder, filename)
 
@@ -122,7 +124,7 @@ def capture_fullpage_screenshot(driver, url, folder):
     return file_path
 
 
-# ===== ZIP Function =====
+# ===== ZIP Folder =====
 
 def zip_folder(folder_path):
 
